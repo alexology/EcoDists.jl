@@ -1,12 +1,49 @@
 # Methods
 
+## Julia and Distances.jl architecture
+
+The mathematical definitions in Pavoine et al. (2009) drive this implementation.
+All runtime calculations are Julia. `Pavoine` and `TraitDistance` implement
+`Distances.SemiMetric`, with local operations composed from existing primitives:
+
+| Operation | Distances.jl primitive | Additional normalization |
+|---|---|---|
+| Quantitative/rank squared differences | `SqEuclidean` | Fitted range or SD scaling |
+| Quantitative/rank absolute differences | `Cityblock` | Fitted range scaling |
+| Nominal agreement | `Hamming` | Scalar 0/1 |
+| Circular arc | `PeriodicEuclidean` | Divide by `floor(period/2)`, then square root |
+| Normalized chord | `CosineDist` | Square root |
+| Total variation | `TotalVariation` | Square root |
+| Rogers | `SqEuclidean` | Divide by two, then square root |
+| Hellinger | `SqEuclidean` on square roots of probabilities | Divide by two, then square root |
+| Multichoice Jaccard | `Jaccard` | Square root |
+| Rogers–Tanimoto | `RogersTanimoto` | Square root |
+| Sorensen | `BrayCurtis` | Square root |
+| Simple matching / Gower–Legendre | `Hamming` | Divide by modality count; multiply by two for the latter |
+| Ochiai | `CosineDist` on binary profiles | Square root |
+
+Ecological composition adds per-pair availability, joint-absence exclusion,
+conceptual-trait weights, ordinal tie corrections and the circular normalization
+from Eq. 8. Coefficients without an equivalent Distances.jl primitive are computed
+directly from their mathematical formulas. No R process or R implementation is
+called during fitting, distance evaluation, or testing against saved fixtures.
+
+Use `TraitBlock` for data preparation, `pairwise(d,traitdata(d);dims=1)` (or
+`pairwise(d)`) for mixed distances, and `traitmetric(d,index_or_name)` for a single
+trait as a reusable distance object. `trait_distances(d)` collects per-trait
+matrices. `trait_correlations(d)` returns `covariance`, `correlation`,
+`global_correlation`, and `names`. It evaluates unordered observation pairs
+directly, avoiding dense distance matrices that would only be used for statistics.
+There is no R-shaped compatibility API. The former preparation and distance
+function spellings have been removed.
+
 ## Aggregation and preparation
 
 The global coefficient is the weighted root mean square of available trait
 distances (Pavoine et al. 2009, Eq. 5). No additional square root or Euclidean
-correction is applied after that aggregation. The defaults reproduce ade4's
-noninteractive choices: Euclidean quantitative/rank distances, normalized chord
-fuzzy distance, and square-root Jaccard multichoice distance.
+correction is applied after that aggregation. Defaults use Euclidean
+quantitative/rank distances, normalized chord fuzzy distance (Eqs. 11–12), and
+square-root Jaccard multichoice distance.
 
 `TraitBlock` copies input arrays and preserves conceptual groups. All numerical
 work uses Float64. Nominal encodings only test equality and have no ordering.
@@ -101,7 +138,8 @@ for available, nonempty profiles.
 
 ## Contributions and missing observations
 
-`ldist_ktab` produces one distance matrix per conceptual trait. `kdist_cor` uses
+`trait_distances` produces one distance matrix per conceptual trait.
+`trait_correlations` uses
 the lower triangle, excluding the diagonal, to compute sample covariances,
 correlations between traits, and correlations with the global distance. The
 default `squared=true` is the paper's Eq. 9. `squared=false` uses distances directly.
@@ -109,13 +147,15 @@ Pairwise complete observations are selected independently for each statistic.
 An insufficient sample or zero variance yields `NaN` correlation. Constant
 vectors may still have zero covariance. No significance test is implied.
 
-## Numerical conventions and compatibility
+## Numerical conventions and independent validation
 
 Numerical reference tests use ade4 1.7-23 and R 4.5.0. They cover complete and
 missing synthetic data, both quantitative choices, Podani ordinal distances,
 all ade4 fuzzy choices, all ten binary coefficients, and `woangers` (80 species,
 13 traits). They compare global matrices, every trait-distance vector, and
 covariances/correlations of both raw and squared distances.
+These comparisons validate mathematical results rather than define the Julia
+architecture. The saved data remain unchanged when Julia API names change.
 
 Deliberate boundary conventions:
 

@@ -22,8 +22,10 @@ Fuzzy choices are `:chord`, `:manly`, `:rogers`, `:hellinger`, and `:edwards`.
 Binary choices are documented in the methods guide.
 
 The result implements `Distances.SemiMetric` on the **prepared numerical rows**
-returned by `traitdata`, not on raw trait rows. Use `dist_ktab(d)` for the fitted
-distance matrix. Undefined pairs return `NaN`; all self distances are zero.
+returned by `traitdata`, not on raw trait rows. Use
+`Distances.pairwise(d, traitdata(d); dims=1)` for the fitted distance matrix.
+`Distances.pairwise(d)` is the convenience form using all fitted observations.
+Undefined pairs return `NaN`; all self distances are zero.
 Missing traits and joint absences for D are omitted from each pair's denominator.
 """
 struct Pavoine <: Distances.SemiMetric
@@ -148,24 +150,13 @@ than refitting, which would change sample ranges and ranks.
 traitdata(d::Pavoine) = copy(d.data)
 
 Distances.result_type(::Pavoine, ::Type, ::Type) = Float64
+Distances.pairwise(d::Pavoine) = Distances.pairwise(d,d.data;dims=1)
 
 function _binary_sq(method, a, b, c, z)
     mismatch = b + c
     total = a + mismatch + z
-    s = if method == :jaccard
-        a / (a + mismatch)
-    elseif method == :simplematching
-        (a + z) / total
-    elseif method == :sokalsneath
+    s = if method == :sokalsneath
         a / (a + 2mismatch)
-    elseif method == :rogerstanimoto
-        (a + z) / (a + 2mismatch + z)
-    elseif method == :sorensen
-        2a / (2a + mismatch)
-    elseif method == :gowerlegendre
-        (a - mismatch + z) / total
-    elseif method == :ochiai
-        a / sqrt((a+b)*(a+c))
     elseif method == :sokalsneath13
         a*z / sqrt((a+b)*(a+c)*(z+b)*(z+c))
     elseif method == :phi
@@ -184,38 +175,48 @@ function _sqtrait(d::Pavoine, s::TraitSpec, a, b)
     k = first(g)
     x, y = a[k], b[k]
     q = if s.kind == :Q || (s.kind == :O && d.ordinal == :rank)
-        z = abs(x-y)
-        d.quantitative == :euclidean ? z*z : z
+        metric = d.quantitative == :euclidean ? Distances.SqEuclidean() : Distances.Cityblock()
+        Distances.evaluate(metric,x,y)
     elseif s.kind == :O
         x == y ? 0.0 : (abs(x-y) - (s.ties[x]-1)/2 - (s.ties[y]-1)/2) / s.scale
     elseif s.kind == :N
-        Float64(x != y)
+        Float64(Distances.evaluate(Distances.Hamming(),x,y))
     elseif s.kind == :D
-        x == 0 && y == 0 ? NaN : Float64(x != y)
+        x == 0 && y == 0 ? NaN : Float64(Distances.evaluate(Distances.Hamming(),x,y))
     elseif s.kind == :C
-        delta = abs(x-y)
-        min(delta, s.period-delta) / fld(s.period,2)
+        Distances.evaluate(Distances.PeriodicEuclidean(s.period),x,y) / fld(s.period,2)
     elseif s.kind == :F
         all(j -> a[j] == b[j], g) && return 0.0
+        av,bv = view(a,g),view(b,g)
         if d.fuzzy == :chord
-            dotxy = 0.0
-            xx = 0.0
-            yy = 0.0
-            for j in g
-                dotxy += a[j]*b[j]
-                xx += a[j]^2
-                yy += b[j]^2
-            end
-            1 - dotxy / sqrt(xx) / sqrt(yy)
+            Distances.evaluate(Distances.CosineDist(),av,bv)
         elseif d.fuzzy == :manly
-            sum(abs(a[j]-b[j]) for j in g) / 2
+            Distances.evaluate(Distances.TotalVariation(),av,bv)
         elseif d.fuzzy == :rogers
-            sum((a[j]-b[j])^2 for j in g) / 2
+            Distances.evaluate(Distances.SqEuclidean(),av,bv) / 2
         else
-            z = max(0.0, 1 - sum(sqrt(a[j]*b[j]) for j in g))
+            # Stable Hellinger formula: avoids cancellation near identical
+            # distributions and keeps nonnegative squared distances at tol=0.
+            z = Distances.evaluate(Distances.SqEuclidean(),
+                                   (sqrt(x) for x in av),(sqrt(y) for y in bv)) / 2
             d.fuzzy == :edwards ? sqrt(z) : z
         end
     else
+        av,bv = view(a,g),view(b,g)
+        if d.binary == :jaccard
+            return _trait_threshold(d,s,Distances.evaluate(Distances.Jaccard(),av,bv))
+        elseif d.binary == :rogerstanimoto
+            value = Distances.evaluate(Distances.RogersTanimoto(),
+                                       (x != 0 for x in av),(y != 0 for y in bv))
+            return _trait_threshold(d,s,value)
+        elseif d.binary == :sorensen
+            return _trait_threshold(d,s,Distances.evaluate(Distances.BrayCurtis(),av,bv))
+        elseif d.binary in (:simplematching,:gowerlegendre)
+            value = Distances.evaluate(Distances.Hamming(),av,bv) / length(g)
+            return _trait_threshold(d,s,d.binary == :gowerlegendre ? 2value : value)
+        elseif d.binary == :ochiai
+            return _trait_threshold(d,s,Distances.evaluate(Distances.CosineDist(),av,bv))
+        end
         both, onlya, onlyb, neither = 0.0, 0.0, 0.0, 0.0
         for j in g
             if a[j] > 0
@@ -226,8 +227,13 @@ function _sqtrait(d::Pavoine, s::TraitSpec, a, b)
         end
         _binary_sq(d.binary, both, onlya, onlyb, neither)
     end
-    q = max(0.0, q)
-    # ade4 thresholds fuzzy squared distances before taking their square root.
+    return _trait_threshold(d,s,q)
+end
+
+function _trait_threshold(d::Pavoine,s::TraitSpec,value)
+    q = max(0.0,value)
+    # Numerical zero convention; applied per conceptual trait, independently
+    # of how a caller groups columns into blocks.
     return (s.kind == :F ? q < d.tol : sqrt(q) < d.tol) ? 0.0 : q
 end
 
@@ -249,14 +255,3 @@ function (d::Pavoine)(a::AbstractVector, b::AbstractVector)
     end
     return iszero(denominator) ? NaN : sqrt(numerator / denominator)
 end
-
-"""
-    dist_ktab(d::Pavoine)
-    dist_ktab(blocks; kwargs...)
-
-Return the symmetric matrix of mixed trait distances. Observations are ordered
-as the input rows. The diagonal is zero; pairs without shared available traits
-have distance `NaN`. Keywords are forwarded to `Pavoine`.
-"""
-dist_ktab(d::Pavoine) = Distances.pairwise(d, d.data; dims=1)
-dist_ktab(blocks; kwargs...) = dist_ktab(Pavoine(blocks; kwargs...))

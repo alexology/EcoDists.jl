@@ -2,6 +2,9 @@ _ismissing(x) = ismissing(x) || (x isa AbstractFloat && isnan(x))
 _matrix(x::AbstractVector) = reshape(x, :, 1)
 _matrix(x::AbstractMatrix) = x
 
+const _TRAIT_KINDS = (;quantitative=:Q,ordinal=:O,nominal=:N,dichotomous=:D,
+                      fuzzy=:F,multichoice=:B,circular=:C)
+
 function _numeric(x)
     a = _matrix(x)
     Base.require_one_based_indexing(a)
@@ -41,9 +44,10 @@ end
 """
     TraitBlock(data, kind; names=nothing, col_blocks=nothing, periods=nothing, origin=1)
 
-Describe observations in rows and traits in columns. `kind` is one of `:Q`
-(quantitative), `:O` (numeric ordered levels), `:N` (nominal), `:D` (asymmetric
-presence/absence), `:F` (fuzzy), `:B` (multichoice), or `:C` (circular).
+Describe observations in rows and traits in columns. `kind` is `:quantitative`,
+`:ordinal` (numeric ordered levels), `:nominal`, `:dichotomous` (asymmetric
+presence/absence), `:fuzzy`, `:multichoice`, or `:circular`. The short statistical
+codes `:Q`, `:O`, `:N`, `:D`, `:F`, `:B`, and `:C` remain accepted aliases.
 Vectors describe a single trait. Fuzzy and multichoice traits use contiguous
 groups of modality columns specified by `col_blocks` (default: one group).
 `names` labels conceptual traits, not modalities. Circular traits require the
@@ -65,6 +69,7 @@ end
 
 function TraitBlock(data::Union{AbstractVector,AbstractMatrix}, kind::Symbol;
                     names=nothing, col_blocks=nothing, periods=nothing, origin=1)
+    kind = hasproperty(_TRAIT_KINDS,kind) ? getproperty(_TRAIT_KINDS,kind) : kind
     kind in (:Q, :O, :N, :D, :F, :B, :C) || throw(ArgumentError("unknown trait kind: $kind"))
     raw = _matrix(data)
     if kind == :N
@@ -135,41 +140,3 @@ function _expand(x, n, name)
     length(out) == n || throw(DimensionMismatch("$name must have one entry per column"))
     return out
 end
-
-"""
-    prep_fuzzy(data, col_blocks; names=nothing)
-
-Prepare fuzzy affinity groups for `Pavoine`, like ade4's `prep.fuzzy`.
-Each group is one trait regardless of its number of modalities. Row weights
-used by ade4 to store auxiliary column frequencies do not affect these distances.
-"""
-prep_fuzzy(data, col_blocks; names=nothing) =
-    TraitBlock(data, :F; col_blocks=col_blocks, names=names)
-
-"""
-    prep_binary(data, col_blocks; names=nothing)
-
-Prepare multichoice groups for `Pavoine`, like ade4's `prep.binary`.
-Positive values become one; zero remains zero. An all-zero group is unavailable.
-"""
-prep_binary(data, col_blocks; names=nothing) =
-    TraitBlock(data, :B; col_blocks=col_blocks, names=names)
-
-"""
-    prep_circular(data; rangemin=nothing, rangemax=nothing, names=nothing)
-    prep_circular(data, rangemin, rangemax; names=nothing)
-
-Prepare discrete circular traits with inclusive endpoints, like ade4's
-`prep.circular`. Endpoints may be scalars or vectors. Omitted endpoints use
-observed extrema; specify them for known cycles, e.g. 1 and 12 for months.
-"""
-function prep_circular(data; rangemin=nothing, rangemax=nothing, names=nothing)
-    a = _numeric(data)
-    observed = [filter(!isnan, a[:,j]) for j in axes(a,2)]
-    any(isempty, observed) && throw(ArgumentError("circular columns cannot be entirely missing"))
-    lo = isnothing(rangemin) ? minimum.(observed) : _expand(rangemin, size(a,2), "rangemin")
-    hi = isnothing(rangemax) ? maximum.(observed) : _expand(rangemax, size(a,2), "rangemax")
-    return TraitBlock(a, :C; periods=hi .- lo .+ 1, origin=lo, names=names)
-end
-prep_circular(data, rangemin, rangemax; names=nothing) =
-    prep_circular(data; rangemin=rangemin, rangemax=rangemax, names=names)

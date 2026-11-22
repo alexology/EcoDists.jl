@@ -1,10 +1,12 @@
 # EcoDists.jl
 
-Mixed ecological trait distances following Pavoine, Vallet, Dufour, Gachet and
-Daniel (2009), built on [Distances.jl](https://github.com/JuliaStats/Distances.jl).
-This package implements the mixed-variables coefficient, distances per trait,
-and the covariance/correlation analysis of trait contributions implemented by
-the `dist.ktab` family in [ade4](https://adeverse.github.io/ade4/reference/dist.ktab.html).
+Pure Julia ecological distances based on the mathematical framework of Pavoine,
+Vallet, Dufour, Gachet and Daniel (2009), composed from
+[Distances.jl](https://github.com/JuliaStats/Distances.jl) primitives.
+The package implements the mixed-variables coefficient, individual trait
+distances, and the covariance/correlation analysis of trait contributions.
+[ade4](https://adeverse.github.io/ade4/reference/dist.ktab.html) is an independent
+numerical test oracle; it is not a runtime dependency or the package architecture.
 
 This is part of an experimental effort using AI-assisted development to bring
 ecological and bioinformatics methods into a common Julia environment.
@@ -14,7 +16,7 @@ performance claim.
 
 The independent `HierarchicalBeta` family combines species-incidence Jaccard
 with within-shared-species ASV Jaccard or exact Wasserstein p-distance.
-It preserves the existing Pavoine API and returns an additive taxonomic/molecular
+It uses a separate fitted mapping and returns an additive taxonomic/molecular
 decomposition, with per-species contributions. See the
 [hierarchical methods guide](docs/src/hierarchical.md) and runnable
 [synthetic metabarcoding example](examples/hierarchical_beta.jl).
@@ -40,24 +42,25 @@ using EcoDists
 using Distances: pairwise, evaluate
 
 blocks = [
-    TraitBlock([10.0, 20.0, 15.0], :Q; names=["height"]),
-    TraitBlock(["annual", "perennial", "annual"], :N; names=["life_cycle"]),
-    TraitBlock([1, 3, 2], :O; names=["ordered_class"]),
-    prep_circular([12, 1, 6], 1, 12; names=["flowering_month"]),
-    prep_fuzzy([3 1 0; 0 2 2; 1 0 3], [3]; names=["diet"]),
+    TraitBlock([10.0, 20.0, 15.0], :quantitative; names=["height"]),
+    TraitBlock(["annual", "perennial", "annual"], :nominal; names=["life_cycle"]),
+    TraitBlock([1, 3, 2], :ordinal; names=["ordered_class"]),
+    TraitBlock([12, 1, 6], :circular; periods=12, names=["flowering_month"]),
+    TraitBlock([3 1 0; 0 2 2; 1 0 3], :fuzzy; col_blocks=[3], names=["diet"]),
 ]
 
 d = Pavoine(blocks)                  # fit ranges, ranks and encodings once
-D = dist_ktab(d)                     # observations × observations
-per_trait = ldist_ktab(d)             # one matrix per conceptual trait
-contributions = kdist_cor(d)         # paircov, paircor, glocor, names
-
 X = traitdata(d)                     # prepared numeric rows, copied
-@assert pairwise(d, X; dims=1) ≈ D
+D = pairwise(d, X; dims=1)           # observations × observations
+@assert pairwise(d) ≈ D              # convenience for all fitted observations
+per_trait = trait_distances(d)       # one matrix per conceptual trait
+contributions = trait_correlations(d)
+height = traitmetric(d, "height")   # also a Distances.jl object
+@assert pairwise(height, X; dims=1) == per_trait[1]
 @assert evaluate(d, X[1,:], X[2,:]) ≈ D[1,2]
 
-weighted = dist_ktab(blocks; weights=[2, 1, 1, 1, 3])
-gower = dist_ktab(blocks; quantitative=:manhattan)
+weighted = pairwise(Pavoine(blocks; weights=[2, 1, 1, 1, 3]))
+gower = pairwise(Pavoine(blocks; quantitative=:manhattan))
 ```
 
 `Distances.evaluate` and `pairwise` take the **prepared rows from `traitdata`**.
@@ -67,20 +70,21 @@ subset `X` and reuse `d`; refitting would change sample ranges and midranks.
 
 ## Trait types
 
-| Code | Meaning | Default trait distance |
+| Kind | Meaning | Default trait distance |
 |---|---|---|
-| `:Q` | Quantitative | Absolute difference divided by observed range |
-| `:O` | Ordinal, supplied as numeric ordered levels | Range-scaled midrank difference |
-| `:N` | Nominal, including symmetric binary traits | 0 for agreement, 1 otherwise |
-| `:D` | Asymmetric presence/absence | 0 for shared presence, 1 for disagreement; joint absence excluded |
-| `:F` | Fuzzy affinities or proportions | Normalized Orloci chord distance |
-| `:B` | Multichoice nominal, encoded by modality columns | Square root of Jaccard dissimilarity |
-| `:C` | Discrete evenly spaced circular levels | Paper Eq. 8, including odd-cycle correction |
+| `:quantitative` | Quantitative | Absolute difference divided by observed range |
+| `:ordinal` | Ordinal, supplied as numeric ordered levels | Range-scaled midrank difference |
+| `:nominal` | Nominal, including symmetric binary traits | 0 for agreement, 1 otherwise |
+| `:dichotomous` | Asymmetric presence/absence | 0 for shared presence, 1 for disagreement; joint absence excluded |
+| `:fuzzy` | Fuzzy affinities or proportions | Normalized Orloci chord distance |
+| `:multichoice` | Multichoice nominal, encoded by modality columns | Square root of Jaccard dissimilarity |
+| `:circular` | Discrete evenly spaced circular levels | Paper Eq. 8, including odd-cycle correction |
 
 Observations occupy rows. Each scalar column counts as one trait. Each fuzzy
 or multichoice group counts as **one trait**, regardless of modality count.
-For example, `prep_fuzzy(A, [3, 5])` describes two traits using eight columns.
-Use `:N` when shared absences should count as agreement and `:D` when they should
+For example, `TraitBlock(A, :fuzzy; col_blocks=[3, 5])` describes two traits using
+eight columns. Use `:nominal` when shared absences should count as agreement and
+`:dichotomous` when they should
 be excluded. Known circular limits must be specified even if some levels are absent.
 
 ## Missing values and weights
@@ -99,14 +103,15 @@ the remaining traits are renormalized per pair. Pairs with no available traits
 return `NaN`; self distances are zero. Entirely unavailable traits are rejected
 explicitly. Weights apply to conceptual traits and may be zero.
 
-Equal input weights do not imply equal contributions. `kdist_cor(d).glocor`
+Equal input weights do not imply equal contributions.
+`trait_correlations(d).global_correlation`
 is the correlation of each squared trait-distance vector with the squared global
 distance vector, following Eq. 9. These correlations are not additive percentages.
 
 ## Methods and validation
 
 See the [methods guide](docs/src/methods.md) for alternative formulas,
-normalization choices, and differences from ade4.
+normalization choices, and the underlying Distances.jl composition.
 All exported objects have Julia docstrings. A runnable example is in
 [examples/mixed_traits.jl](examples/mixed_traits.jl).
 
@@ -121,8 +126,8 @@ binary coefficients, and the 80-species `woangers` example from the paper.
 Reference regeneration: `Rscript tools/make_reference.R` from the package root.
 The numerical reference version is recorded in `test/fixtures/VERSION`.
 
-Validated on Julia 1.13.3: 136,761 test assertions passed (54,634 original mixed-trait
-checks and 82,127 hierarchical checks); Aqua 8/8 passed,
+Validated on Julia 1.13.3: 136,839 test assertions passed (54,634 numerical
+mixed-trait checks, 82,127 hierarchical checks, and 78 native API checks); Aqua 8/8 passed,
 JET reported no possible errors, ExplicitImports checks passed, and every export
 has a docstring. Julia 1.10 compatibility is declared but has not been executed.
 The methods guide documents tolerance differences in raw-distance correlations.

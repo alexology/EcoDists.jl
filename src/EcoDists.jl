@@ -2,7 +2,8 @@
     EcoDists
 
 Mixed trait distances and trait contributions following Pavoine et al. (2009),
-with the Distances.jl interface and counterparts of ade4's `dist.ktab` family.
+composed from Distances.jl primitives. R/ade4 is used only as an independent
+numerical reference in optional fixture-generation tools.
 The independent `HierarchicalBeta` family compares species incidence and
 within-species molecular repertoires using ASV Jaccard or exact uniform transport.
 """
@@ -12,8 +13,8 @@ import Distances
 using Statistics: mean, std, cov, cor
 using SparseArrays: SparseMatrixCSC, nzrange, rowvals, nonzeros
 
-export TraitBlock, prep_fuzzy, prep_binary, prep_circular,
-       Pavoine, traitdata, dist_ktab, ldist_ktab, kdist_cor
+export TraitBlock, Pavoine, traitdata, TraitDistance, traitmetric,
+       trait_distances, trait_correlations
 export NucleotidePDistance, alignment_mask, HierarchicalBeta, MolecularCommunity,
        community, communities, ground_distances, hierarchical_components,
        taxonomic_component, molecular_component, species_contributions,

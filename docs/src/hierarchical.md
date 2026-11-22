@@ -281,8 +281,9 @@ empty communities, dense/sparse incidence, and cross-model rejection. It checks
 boundedness, symmetry, additive decomposition, taxonomic Jaccard recovery, every
 triple of the 32 communities from a five-ASV pool, and seeded random triples on
 independently generated DNA. The existing ade4 reference tests execute unchanged.
-On Julia 1.13.3, the complete suite passed 136,761 assertions: 54,634 original
-mixed-trait checks and 82,127 hierarchical checks. Aqua passed 8/8, JET found no
+On Julia 1.13.3, the complete suite passed 136,839 assertions: 54,634 numerical
+mixed-trait checks, 82,127 hierarchical checks, and 78 native API checks.
+Aqua passed 8/8, JET found no
 possible errors, ExplicitImports checks passed, and every export has a docstring.
 Julia 1.10 compatibility remains declared but was not executed in this validation.
 
