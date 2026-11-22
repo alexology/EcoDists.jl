@@ -21,6 +21,39 @@ decomposition, with per-species contributions. See the
 [hierarchical methods guide](docs/src/hierarchical.md) and runnable
 [synthetic metabarcoding example](examples/hierarchical_beta.jl).
 
+## Result formats
+
+Distance calculations with `pairwise` return numerical matrices.
+`trait_distances` returns one matrix per trait, and `trait_correlations` contains
+covariance/correlation matrices and a vector of correlations with global distance.
+
+`hierarchical_components` returns a readable `HierarchicalResult`: scalar fields
+are shown as a summary and `.species` is a `SpeciesContributions` table with
+`species` and `contribution` columns. Rows follow fitted
+species order. The molecular component is `sum(result.species.contribution)`.
+
+```julia
+using EcoDists
+model = HierarchicalBeta(["a0", "a1", "b0"], ["A", "A", "B"],
+                         ["AAAA", "AAAT", "CCCC"])
+sample_a = community(model, ["a0", "b0"])
+sample_b = community(model, ["a1", "b0"])
+r = hierarchical_components(model, sample_a, sample_b)
+display(r)                          # summary and shared-species table
+r.species                           # species and contribution columns
+Matrix(r)                           # 1×7 numerical summary
+Matrix(r.species)                    # labels and contributions, two columns
+
+using DataFrames                    # optional: install separately if needed
+DataFrame(r)                        # one row with named summary columns
+DataFrame(r.species)                 # one row per shared species
+```
+
+DataFrames integration loads automatically when DataFrames is loaded; DataFrames
+is not an obligatory runtime dependency. Empty species tables retain their column
+names and types. Conversions copy columns by default. Plain distance matrices can
+also be converted with `DataFrame(distance_matrix, :auto)`.
+
 ## Installation
 
 Julia 1.10 or later is required. Install directly from GitHub:
@@ -126,8 +159,9 @@ binary coefficients, and the 80-species `woangers` example from the paper.
 Reference regeneration: `Rscript tools/make_reference.R` from the package root.
 The numerical reference version is recorded in `test/fixtures/VERSION`.
 
-Validated on Julia 1.13.3: 136,839 test assertions passed (54,634 numerical
-mixed-trait checks, 82,127 hierarchical checks, and 78 native API checks); Aqua 8/8 passed,
+Validated on Julia 1.13.3: 136,872 test assertions passed (54,634 numerical
+mixed-trait checks, 82,127 hierarchical checks, 78 native API checks, and 33
+table/DataFrames checks); Aqua 8/8 passed,
 JET reported no possible errors, ExplicitImports checks passed, and every export
 has a docstring. Julia 1.10 compatibility is declared but has not been executed.
 The methods guide documents tolerance differences in raw-distance correlations.

@@ -16,6 +16,7 @@ using SparseArrays: SparseMatrixCSC, nzrange, rowvals, nonzeros
 export TraitBlock, Pavoine, traitdata, TraitDistance, traitmetric,
        trait_distances, trait_correlations
 export NucleotidePDistance, alignment_mask, HierarchicalBeta, MolecularCommunity,
+       HierarchicalResult, SpeciesContributions,
        community, communities, ground_distances, hierarchical_components,
        taxonomic_component, molecular_component, species_contributions,
        shared_species_mean, molecular_fraction
@@ -25,6 +26,7 @@ include("distance.jl")
 include("contributions.jl")
 include("nucleotide.jl")
 include("transport.jl")
+include("results.jl")
 include("hierarchical.jl")
 
 end

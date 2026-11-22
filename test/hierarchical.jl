@@ -94,8 +94,8 @@ end
             @test parts.taxonomic == 0
             @test parts.molecular == local_d/2
             @test parts.total == parts.taxonomic+parts.molecular
-            @test parts.molecular == sum(values(parts.species))
-            @test parts.species == Dict("a"=>local_d/2,"b"=>0.0)
+            @test parts.molecular == sum(parts.species.contribution)
+            @test collect(parts.species) == [(species="a",contribution=local_d/2),(species="b",contribution=0.0)]
             @test parts.shared_mean == local_d/2
             @test parts.molecular_fraction == 1
             @test molecular_component(d,a,b) == parts.molecular
@@ -215,7 +215,7 @@ end
                 @test d(samples[i],samples[j]) == d(samples[j],samples[i])
                 parts = hierarchical_components(d,samples[i],samples[j])
                 @test parts.total == parts.taxonomic+parts.molecular
-                @test parts.molecular == sum(values(parts.species);init=0.0)
+                @test parts.molecular == sum(parts.species.contribution;init=0.0)
                 @test matrix[i,j] ≈ parts.total
                 sa = Set(labels[k] for k in 1:5 if (i-1) & (1<<(k-1)) != 0)
                 sb = Set(labels[k] for k in 1:5 if (j-1) & (1<<(k-1)) != 0)
@@ -253,7 +253,7 @@ end
         @test d(a,b) == 1
         @test 0 <= parts.total <= 1
         @test parts.total == parts.taxonomic+parts.molecular
-        @test parts.molecular == sum(values(parts.species))
-        @test all(v -> isapprox(v,1/9;atol=2e-15),values(parts.species))
+        @test parts.molecular == sum(parts.species.contribution)
+        @test all(v -> isapprox(v,1/9;atol=2e-15),parts.species.contribution)
     end
 end

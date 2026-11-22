@@ -36,14 +36,15 @@ by one. Conditional molecular turnover is `mean_shared = sum(d_s)/|C|`, so
 shared-species proportion reduces the molecular component. This is not a general
 monotonicity guarantee if the identities or local distances of shared species change.
 
-`hierarchical_components(d,a,b)` returns:
+`hierarchical_components(d,a,b)` returns a `HierarchicalResult` with a readable
+summary and these fields:
 
 | Field | Meaning |
 |---|---|
 | `total` | Hierarchical dissimilarity |
 | `taxonomic` | Species-incidence Jaccard |
 | `molecular` | Molecular component |
-| `species` | Dictionary of contributions `d_s/U`, including zeros for shared species |
+| `species` | `SpeciesContributions` table: species labels and contributions `d_s/U`, including zeros |
 | `shared_mean` | Conditional mean local dissimilarity among shared species |
 | `molecular_fraction` | `molecular/total` |
 | `nshared`, `nunion` | Species counts for the comparison |
@@ -54,11 +55,38 @@ component zero. `shared_mean` is `NaN` without shared species. The molecular
 fraction is `NaN` when total dissimilarity is zero and otherwise lies in [0,1].
 
 The implementation returns `total == taxonomic + molecular` and
-`molecular == sum(values(species))` for the decomposition object. Ordinary
+`molecular == sum(species.contribution)` for the decomposition object. Ordinary
 floating-point summation can overshoot the theoretical upper bound by a few ulps;
 in that boundary case one species contribution is adjusted down by the rounding
 excess. The scalar distance and decomposition can differ in their last bit from
 summation order. No biological threshold or approximate OT regularization is used.
+
+### Matrices and DataFrames
+
+The result itself displays scalar quantities as a summary and the shared species
+as a two-column table. `result.species.species` gives labels and
+`result.species.contribution` gives values. Rows follow the fitted mapping, so their
+order is stable rather than determined by dictionary iteration. The scalar fields
+remain accessible as `result.total`, `result.taxonomic`, and so on.
+
+`Matrix(result)` returns a 1×7 Float64 summary in column order
+`total, taxonomic, molecular, shared_mean, molecular_fraction, nshared, nunion`.
+`Matrix(result.species)` returns a two-column matrix containing labels followed by
+contributions; its element type is Any because labels and numbers are retained.
+For named, typed columns, load the optional DataFrames package:
+
+```julia
+using DataFrames
+r = hierarchical_components(d,a,b)
+summary = DataFrame(r)
+contributions = DataFrame(r.species)
+```
+
+The DataFrames extension loads automatically and is not required for calculation
+or native table display. Summary counts retain integer types in the DataFrame;
+species tables use String and Float64 columns, even when empty. DataFrames copy
+columns by default, so editing a converted table does not modify the result.
+Pairwise distance outputs remain numerical matrices.
 
 ## Fitted mapping and incidence interface
 
@@ -281,8 +309,9 @@ empty communities, dense/sparse incidence, and cross-model rejection. It checks
 boundedness, symmetry, additive decomposition, taxonomic Jaccard recovery, every
 triple of the 32 communities from a five-ASV pool, and seeded random triples on
 independently generated DNA. The existing ade4 reference tests execute unchanged.
-On Julia 1.13.3, the complete suite passed 136,839 assertions: 54,634 numerical
-mixed-trait checks, 82,127 hierarchical checks, and 78 native API checks.
+On Julia 1.13.3, the complete suite passed 136,872 assertions: 54,634 numerical
+mixed-trait checks, 82,127 hierarchical checks, 78 native API checks, and 33
+table/DataFrames checks (DataFrames 1.8.3).
 Aqua passed 8/8, JET found no
 possible errors, ExplicitImports checks passed, and every export has a docstring.
 Julia 1.10 compatibility remains declared but was not executed in this validation.

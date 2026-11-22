@@ -27,7 +27,7 @@ function hierarchical_example()
         println(names[j], '\t', r.taxonomic, '\t', repertoires(asv_samples[1],asv_samples[j]),
                 '\t', r.total, '\t', r.molecular)
         @assert r.total == r.taxonomic+r.molecular
-        @assert sum(values(r.species)) == r.molecular
+        @assert sum(r.species.contribution) == r.molecular
     end
     control = hierarchical_components(molecular,samples[1],samples[6])
     @assert control.molecular == 0
@@ -40,6 +40,12 @@ function hierarchical_example()
     @assert small.shared_mean == turnover.shared_mean == 0.25
     @assert turnover.molecular < small.molecular  # fewer shared species / union
     @assert isapprox(turnover.molecular,1/12)
+    println("\nReadable decomposition for taxonomic_turnover:")
+    show(stdout,MIME"text/plain"(),turnover)
+    println()
+    # Optional, after loading DataFrames at the top level:
+    # DataFrame(turnover)          # one-row summary
+    # DataFrame(turnover.species)  # species contributions
     println("\nPairwise hierarchical Wasserstein p-distances:")
     display(pairwise(molecular,samples))
     return (; molecular,repertoires,samples,incidence)

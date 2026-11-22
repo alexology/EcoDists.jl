@@ -254,7 +254,10 @@ function _beta_parts(d,a,b; contributions=nothing)
             contribution = local_distance/union_size
             local_sum += local_distance
             molecular += contribution
-            !isnothing(contributions) && (contributions[d.species[sa]] = contribution)
+            if !isnothing(contributions)
+                push!(contributions.species,d.species[sa])
+                push!(contributions.contribution,contribution)
+            end
             i += 1; j += 1
         elseif sa < sb
             i += 1
@@ -275,10 +278,12 @@ Distances.result_type(::HierarchicalBeta, ::Type, ::Type) = Float64
 """
     hierarchical_components(d::HierarchicalBeta, a, b)
 
-Return `total`, `taxonomic`, `molecular`, `species` (a Dict of shared-species
-contributions), `shared_mean`, `molecular_fraction`, `nshared`, and `nunion`.
+Return a readable `HierarchicalResult` with `total`, `taxonomic`, `molecular`,
+`species` (a `SpeciesContributions` table), `shared_mean`, `molecular_fraction`,
+`nshared`, and `nunion`. With DataFrames loaded, use `DataFrame(result)` for a
+summary and `DataFrame(result.species)` for the species contributions.
 `total = taxonomic + molecular`; `taxonomic` is incidence species Jaccard and
-`molecular = sum(values(species))`. Each shared species contributes `d_s/nunion`.
+`molecular = sum(species.contribution)`. Each shared species contributes `d_s/nunion`.
 Compute this once when several diagnostics are needed, avoiding repeated transport.
 
 Empty/empty has total zero, empty/nonempty has total one. `shared_mean` is NaN
@@ -286,30 +291,27 @@ without shared species; `molecular_fraction` is NaN when total dissimilarity is 
 The fraction otherwise equals `molecular/total` and is not a frequency estimate.
 """
 function hierarchical_components(d::HierarchicalBeta,a::MolecularCommunity,b::MolecularCommunity)
-    species = Dict{String,Float64}()
+    species = SpeciesContributions()
     parts = _beta_parts(d,a,b;contributions=species)
-    molecular = sum(values(species); init=0.0)
+    molecular = sum(species.contribution; init=0.0)
     taxonomic = parts.taxonomic
     total = taxonomic+molecular
     # Summing normalized positive contributions can exceed the mathematical
     # upper bound by roundoff. Correct only that last-bit excess in one term,
     # preserving both exact floating-point addition identities in the result.
     if total > 1.0
-        key = first(keys(species))
-        for (name,value) in species
-            value > species[key] && (key = name)
-        end
+        key = argmax(species.contribution)
         while total > 1.0
-            value = species[key]
-            species[key] = max(0.0,min(prevfloat(value),value-(total-1.0)))
-            molecular = sum(values(species);init=0.0)
+            value = species.contribution[key]
+            species.contribution[key] = max(0.0,min(prevfloat(value),value-(total-1.0)))
+            molecular = sum(species.contribution;init=0.0)
             total = taxonomic+molecular
         end
     end
     shared_mean = parts.shared == 0 ? NaN : parts.local_sum/parts.shared
     molecular_fraction = total == 0 ? NaN : molecular/total
-    return (; total,taxonomic,molecular,species,shared_mean,molecular_fraction,
-             nshared=parts.shared,nunion=parts.union_size)
+    return HierarchicalResult(total,taxonomic,molecular,species,shared_mean,
+                              molecular_fraction,parts.shared,parts.union_size)
 end
 
 """
@@ -335,8 +337,9 @@ molecular_component(d::HierarchicalBeta,a::MolecularCommunity,b::MolecularCommun
 """
     species_contributions(d::HierarchicalBeta, a, b)
 
-Dictionary mapping each shared species to its contribution to the molecular
-component, including zero contributions. Species absent from either site are omitted.
+Return a `SpeciesContributions` table with `species` and `contribution` columns,
+in fitted species order, including zero contributions. Species absent from either
+site are omitted. Use `DataFrame(table)` when DataFrames is loaded, or `Matrix(table)`.
 """
 species_contributions(d::HierarchicalBeta,a::MolecularCommunity,b::MolecularCommunity) =
     hierarchical_components(d,a,b).species

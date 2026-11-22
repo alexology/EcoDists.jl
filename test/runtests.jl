@@ -182,3 +182,4 @@ end
 # Independent of all existing ade4 numerical reference tests.
 include("hierarchical.jl")
 include("native_distances.jl")
+include("results.jl")
