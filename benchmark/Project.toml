@@ -1,0 +1,16 @@
+[deps]
+EcoDists = "df9c1d6d-2e7c-42e1-9f96-672e737a2834"
+HiGHS = "87dc4568-4c63-4d18-b0c0-bb2238e4078b"
+MathOptInterface = "b8f27783-ece8-5eb3-8dc8-9495eed66fee"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+
+[compat]
+EcoDists = "0.1"
+HiGHS = "1.27"
+MathOptInterface = "1.54"
+Random = "1"
+Statistics = "1"
+Printf = "1"
+julia = "1.10"

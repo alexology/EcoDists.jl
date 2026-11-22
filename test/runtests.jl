@@ -178,3 +178,6 @@ end
         end
     end
 end
+
+# Independent of all existing ade4 numerical reference tests.
+include("hierarchical.jl")

@@ -8,8 +8,16 @@ the `dist.ktab` family in [ade4](https://adeverse.github.io/ade4/reference/dist.
 
 This is part of an experimental effort using AI-assisted development to bring
 ecological and bioinformatics methods into a common Julia environment.
-High performance is a development objective; no comparative performance claim
-has been established for this package.
+High performance is a development objective. A limited solver comparison for the
+hierarchical family is documented in its methods guide; it is not a whole-pipeline
+performance claim.
+
+The independent `HierarchicalBeta` family combines species-incidence Jaccard
+with within-shared-species ASV Jaccard or exact Wasserstein p-distance.
+It preserves the existing Pavoine API and returns an additive taxonomic/molecular
+decomposition, with per-species contributions. See the
+[hierarchical methods guide](docs/src/hierarchical.md) and runnable
+[synthetic metabarcoding example](examples/hierarchical_beta.jl).
 
 ## Installation
 
@@ -21,7 +29,8 @@ Pkg.add(url="https://github.com/alexology/EcoDists.jl")
 ```
 
 EcoDists is available from GitHub and is not registered in Julia General.
-Its runtime dependencies are Distances and Statistics. R is needed only to
+Its runtime dependencies are Distances, Statistics and the SparseArrays standard
+library. R is needed only to
 regenerate reference test data, not to use or test the package.
 
 ## Example
@@ -112,14 +121,22 @@ binary coefficients, and the 80-species `woangers` example from the paper.
 Reference regeneration: `Rscript tools/make_reference.R` from the package root.
 The numerical reference version is recorded in `test/fixtures/VERSION`.
 
-Validated on Julia 1.13.3: 54,634 test assertions passed; Aqua 8/8 passed,
+Validated on Julia 1.13.3: 136,761 test assertions passed (54,634 original mixed-trait
+checks and 82,127 hierarchical checks); Aqua 8/8 passed,
 JET reported no possible errors, ExplicitImports checks passed, and every export
 has a docstring. Julia 1.10 compatibility is declared but has not been executed.
 The methods guide documents tolerance differences in raw-distance correlations.
 
-The implemented scope is trait-distance construction and trait-contribution
-analysis. Ordination, clustering, and community diversity analyses discussed
-as applications in the paper are left to other packages. Missing data can make
+The additional hierarchical tests cover exact transport, fixed alignment masks,
+sparse incidence, empty communities, taxonomic/molecular decomposition, duplicate
+sequences, and exhaustive and randomized triangle inequalities. An optional
+HiGHS LP oracle and reproducible solver benchmark are in `benchmark/`; these
+optimization packages are not runtime or unit-test dependencies.
+
+The Pavoine implementation covers trait-distance construction and trait-contribution
+analysis. HierarchicalBeta adds incidence community comparisons with molecular
+decomposition. Ordination, clustering, and diversity analyses discussed as
+applications in the Pavoine paper are left to other packages. Missing data can make
 the resulting distance matrix non-Euclidean; no Euclidean correction is applied.
 
 ## Reference
